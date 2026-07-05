@@ -1,0 +1,1 @@
+# SentimentScope-Real-Time-Sentiment-Analysis
