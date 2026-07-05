@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentimentScope — Analyze Text Emotion</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg-elevated: #12121a;
+    --card: #16161f;
+    --border: #2a2a3a;
+    --fg: #e8e6f0;
+    --muted: #7a7890;
+    --accent: #f0a500;
+    --accent-glow: rgba(240,165,0,0.25);
+    --positive: #22c55e;
+    --negative: #ef4444;
+    --neutral: #64748b;
+    --positive-bg: rgba(34,197,94,0.08);
+    --negative-bg: rgba(239,68,68,0.08);
+    --neutral-bg: rgba(100,116,139,0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; }
+
+  /* Animated background */
+  .bg-scene {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse 600px 400px at 20% 20%, rgba(240,165,0,0.06), transparent),
+      radial-gradient(ellipse 500px 500px at 80% 70%, rgba(34,197,94,0.04), transparent),
+      radial-gradient(ellipse 400px 300px at 50% 50%, rgba(239,68,68,0.03), transparent);
+  }
+
+  .bg-grid {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black, transparent);
+  }
+
+  .floating-orb {
+    position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0;
+    animation: orbFloat 12s ease-in-out infinite alternate;
+  }
+  .orb-1 { width: 300px; height: 300px; top: 10%; left: 5%; background: rgba(240,165,0,0.07); animation-delay: 0s; }
+  .orb-2 { width: 250px; height: 250px; bottom: 15%; right: 10%; background: rgba(34,197,94,0.05); animation-delay: -4s; }
+  .orb-3 { width: 200px; height: 200px; top: 50%; left: 60%; background: rgba(239,68,68,0.04); animation-delay: -8s; }
+
+  @keyframes orbFloat {
+    0% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(30px, -20px) scale(1.1); }
+    66% { transform: translate(-20px, 30px) scale(0.95); }
+    100% { transform: translate(15px, -10px) scale(1.05); }
+  }
+
+  /* Textarea styling */
+  .text-input {
+    background: var(--bg-elevated);
+    border: 1.5px solid var(--border);
+    color: var(--fg);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    line-height: 1.7;
+    resize: vertical;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    outline: none;
+  }
+  .text-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow), 0 0 30px var(--accent-glow);
+  }
+  .text-input::placeholder { color: var(--muted); }
+
+  /* Analyze button */
+  .btn-analyze {
+    background: linear-gradient(135deg, var(--accent), #d4900a);
+    color: #0a0a0f;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.3s;
+  }
+  .btn-analyze:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px var(--accent-glow), 0 0 60px rgba(240,165,0,0.15);
+  }
+  .btn-analyze:active { transform: translateY(0) scale(0.98); }
+  .btn-analyze::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.2) 50%, transparent 60%);
+    transform: translateX(-100%);
+    transition: transform 0.6s;
+  }
+  .btn-analyze:hover::after { transform: translateX(100%); }
+
+  /* Result cards */
+  .result-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    transition: transform 0.3s, box-shadow 0.3s;
+  }
+  .result-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  }
+
+  /* Sentiment badge */
+  .sentiment-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 20px; border-radius: 999px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600; font-size: 0.95rem;
+    transition: all 0.4s;
+  }
+  .badge-positive { background: var(--positive-bg); color: var(--positive); border: 1px solid rgba(34,197,94,0.2); }
+  .badge-negative { background: var(--negative-bg); color: var(--negative); border: 1px solid rgba(239,68,68,0.2); }
+  .badge-neutral { background: var(--neutral-bg); color: var(--neutral); border: 1px solid rgba(100,116,139,0.2); }
+
+  /* Score bar */
+  .score-track {
+    background: rgba(255,255,255,0.05);
+    border-radius: 999px; height: 10px;
+    overflow: hidden; position: relative;
+  }
+  .score-fill {
+    height: 100%; border-radius: 999px;
+    transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1), background 0.5s;
+    position: relative;
+  }
+  .score-fill::after {
+    content: '';
+    position: absolute; right: 0; top: 0; bottom: 0; width: 20px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+    border-radius: 999px;
+  }
+
+  /* Gauge canvas */
+  #gaugeCanvas { display: block; }
+
+  /* History items */
+  .history-item {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.25s;
+  }
+  .history-item:hover {
+    border-color: var(--accent);
+    background: rgba(240,165,0,0.04);
+    transform: translateX(4px);
+  }
+
+  /* Sample chips */
+  .sample-chip {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.25s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
+  }
+  .sample-chip:hover {
+    color: var(--fg);
+    border-color: var(--accent);
+    background: rgba(240,165,0,0.06);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--fg); padding: 12px 24px; border-radius: 12px;
+    font-size: 0.9rem; z-index: 9999; opacity: 0;
+    transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Keyword tags */
+  .keyword-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 12px; border-radius: 6px;
+    font-size: 0.78rem; font-weight: 500;
+  }
+  .kw-positive { background: var(--positive-bg); color: var(--positive); }
+  .kw-negative { background: var(--negative-bg); color: var(--negative); }
+
+  /* Stats counter animation */
+  .stat-number {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 2rem;
+    line-height: 1;
+  }
+
+  /* Pulse ring animation */
+  @keyframes pulseRing {
+    0% { transform: scale(0.8); opacity: 0.6; }
+    100% { transform: scale(1.6); opacity: 0; }
+  }
+  .pulse-ring {
+    position: absolute; inset: -8px; border-radius: 50%;
+    border: 2px solid var(--accent);
+    animation: pulseRing 1.5s ease-out infinite;
+  }
+
+  /* Fade-in animation */
+  @keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-in { animation: fadeSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+  .delay-1 { animation-delay: 0.1s; opacity: 0; }
+  .delay-2 { animation-delay: 0.2s; opacity: 0; }
+  .delay-3 { animation-delay: 0.3s; opacity: 0; }
+  .delay-4 { animation-delay: 0.4s; opacity: 0; }
+
+  /* Loading spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 20px; height: 20px; border: 2.5px solid rgba(10,10,15,0.2);
+    border-top-color: #0a0a0f; border-radius: 50%;
+    animation: spin 0.6s linear infinite; display: none;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* Clear button */
+  .btn-clear {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); border-radius: 10px;
+    transition: all 0.25s; cursor: pointer;
+  }
+  .btn-clear:hover {
+    border-color: var(--negative);
+    color: var(--negative);
+    background: var(--negative-bg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Background layers -->
+<div class="bg-scene"></div>
+<div class="bg-grid"></div>
+<div class="floating-orb orb-1"></div>
+<div class="floating-orb orb-2"></div>
+<div class="floating-orb orb-3"></div>
+
+<!-- Toast notification -->
+<div id="toast" class="toast"></div>
+
+<div class="relative z-10 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, var(--accent), #d4900a);">
+        <i class="fa-solid fa-wave-square text-sm" style="color: #0a0a0f;"></i>
+      </div>
+      <span class="font-semibold text-lg tracking-tight" style="font-family: 'Space Grotesk', sans-serif;">SentimentScope</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="analysisCount" class="text-xs px-3 py-1.5 rounded-full" style="background: var(--bg-elevated); border: 1px solid var(--border); color: var(--muted);">
+        0 analyzed
+      </span>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="flex-1 px-6 pb-16 max-w-6xl mx-auto w-full">
+
+    <!-- Hero -->
+    <section class="text-center pt-8 pb-10 animate-in">
+      <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-4" style="font-family: 'Space Grotesk', sans-serif;">
+        Decode the <span style="color: var(--accent);">emotion</span> behind every word
+      </h1>
+      <p class="text-base max-w-xl mx-auto" style="color: var(--muted); line-height: 1.7;">
+        Paste a review, tweet, or any text — our local NLP engine scores sentiment in real time. No data leaves your browser.
+      </p>
+    </section>
+
+    <!-- Input Section -->
+    <section class="max-w-3xl mx-auto mb-8 animate-in delay-1">
+      <div class="relative">
+        <textarea
+          id="textInput"
+          class="text-input w-full rounded-2xl p-5 pb-12"
+          rows="5"
+          placeholder="Type or paste a review, tweet, or any text here..."
+          maxlength="2000"
+          aria-label="Text input for sentiment analysis"
+        ></textarea>
+        <div class="absolute bottom-4 left-5 right-5 flex items-center justify-between">
+          <span id="charCount" class="text-xs" style="color: var(--muted);">0 / 2000</span>
+          <div class="flex gap-2">
+            <button id="clearBtn" class="btn-clear px-3 py-1.5 text-xs" aria-label="Clear text">
+              <i class="fa-solid fa-xmark mr-1"></i> Clear
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sample texts -->
+      <div class="mt-4 flex flex-wrap gap-2 items-center">
+        <span class="text-xs mr-1" style="color: var(--muted);">Try:</span>
+        <button class="sample-chip" data-text="Absolutely love this product! The quality is outstanding and it arrived earlier than expected. Would definitely recommend to anyone looking for a premium experience.">Positive review</button>
+        <button class="sample-chip" data-text="Terrible customer service. Waited 45 minutes on hold only to be disconnected. The product itself broke after two days. Complete waste of money.">Negative review</button>
+        <button class="sample-chip" data-text="The package arrived on Tuesday. It includes the standard accessories and a quick-start guide. The device weighs about 300 grams.">Neutral text</button>
+        <button class="sample-chip" data-text="Just tried the new update and honestly I'm blown away. The performance improvements are incredible but I did notice a few bugs in the settings menu. Overall though, pretty solid work from the team.">Mixed feelings</button>
+      </div>
+
+      <!-- Analyze button -->
+      <div class="mt-6 flex justify-center">
+        <button id="analyzeBtn" class="btn-analyze px-10 py-3.5 rounded-xl text-base flex items-center gap-3" aria-label="Analyze sentiment">
+          <div class="spinner" id="spinner"></div>
+          <i class="fa-solid fa-bolt" id="btnIcon"></i>
+          <span id="btnText">Analyze Sentiment</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Results Section (hidden initially) -->
+    <section id="resultsSection" class="max-w-4xl mx-auto" style="display: none;">
+
+      <!-- Main result card -->
+      <div class="result-card p-6 md:p-8 mb-6 animate-in">
+        <div class="flex flex-col md:flex-row items-center gap-8">
+          <!-- Gauge -->
+          <div class="relative flex-shrink-0">
+            <canvas id="gaugeCanvas" width="200" height="200"></canvas>
+          </div>
+          <!-- Score details -->
+          <div class="flex-1 text-center md:text-left">
+            <div class="mb-3">
+              <span id="sentimentBadge" class="sentiment-badge badge-neutral">
+                <i class="fa-solid fa-minus-circle"></i>
+                <span id="sentimentLabel">Neutral</span>
+              </span>
+            </div>
+            <div class="mb-4">
+              <span class="stat-number" id="scoreDisplay" style="color: var(--neutral);">0.00</span>
+              <span class="text-sm ml-1" style="color: var(--muted);">/ 1.00</span>
+            </div>
+            <!-- Score bars -->
+            <div class="space-y-3 max-w-sm">
+              <div>
+                <div class="flex justify-between text-xs mb-1.5">
+                  <span style="color: var(--positive);">Positive</span>
+                  <span id="posPercent" style="color: var(--muted);">0%</span>
+                </div>
+                <div class="score-track">
+                  <div id="posBar" class="score-fill" style="width: 0%; background: linear-gradient(90deg, #16a34a, #22c55e);"></div>
+                </div>
+              </div>
+              <div>
+                <div class="flex justify-between text-xs mb-1.5">
+                  <span style="color: var(--negative);">Negative</span>
+                  <span id="negPercent" style="color: var(--muted);">0%</span>
+                </div>
+                <div class="score-track">
+                  <div id="negBar" class="score-fill" style="width: 0%; background: linear-gradient(90deg, #dc2626, #ef4444);"></div>
+                </div>
+              </div>
+              <div>
+                <div class="flex justify-between text-xs mb-1.5">
+                  <span style="color: var(--neutral);">Neutral</span>
+                  <span id="neuPercent" style="color: var(--muted);">0%</span>
+                </div>
+                <div class="score-track">
+                  <div id="neuBar" class="score-fill" style="width: 0%; background: linear-gradient(90deg, #475569, #64748b);"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Keywords & Stats row -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <!-- Detected keywords -->
+        <div class="result-card p-6 animate-in delay-1">
+          <h3 class="text-sm font-semibold mb-4 tracking-wide uppercase" style="color: var(--muted); font-family: 'Space Grotesk', sans-serif;">
+            <i class="fa-solid fa-tags mr-2" style="color: var(--accent);"></i>Detected Keywords
+          </h3>
+          <div id="keywordsContainer" class="flex flex-wrap gap-2">
+            <span class="text-xs" style="color: var(--muted);">No keywords detected</span>
+          </div>
+        </div>
+        <!-- Text stats -->
+        <div class="result-card p-6 animate-in delay-2">
+          <h3 class="text-sm font-semibold mb-4 tracking-wide uppercase" style="color: var(--muted); font-family: 'Space Grotesk', sans-serif;">
+            <i class="fa-solid fa-chart-simple mr-2" style="color: var(--accent);"></i>Text Statistics
+          </h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="stat-number text-xl" id="wordCount" style="color: var(--fg);">0</div>
+              <div class="text-xs mt-1" style="color: var(--muted);">Words</div>
+            </div>
+            <div>
+              <div class="stat-number text-xl" id="sentenceCount" style="color: var(--fg);">0</div>
+              <div class="text-xs mt-1" style="color: var(--muted);">Sentences</div>
+            </div>
+            <div>
+              <div class="stat-number text-xl" id="avgWordLen" style="color: var(--fg);">0</div>
+              <div class="text-xs mt-1" style="color: var(--muted);">Avg. Word Length</div>
+            </div>
+            <div>
+              <div class="stat-number text-xl" id="exclamCount" style="color: var(--fg);">0</div>
+              <div class="text-xs mt-1" style="color: var(--muted);">Exclamations</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sentence-by-sentence breakdown -->
+      <div class="result-card p-6 animate-in delay-3 mb-6">
+        <h3 class="text-sm font-semibold mb-4 tracking-wide uppercase" style="color: var(--muted); font-family: 'Space Grotesk', sans-serif;">
+          <i class="fa-solid fa-list-ul mr-2" style="color: var(--accent);"></i>Sentence Breakdown
+        </h3>
+        <div id="sentenceBreakdown" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- History Section -->
+    <section id="historySection" class="max-w-4xl mx-auto mt-12" style="display: none;">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold tracking-wide uppercase" style="color: var(--muted); font-family: 'Space Grotesk', sans-serif;">
+          <i class="fa-solid fa-clock-rotate-left mr-2" style="color: var(--accent);"></i>Recent Analyses
+        </h2>
+        <button id="clearHistoryBtn" class="text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-red-500/10 hover:text-red-400" style="color: var(--muted); border: 1px solid var(--border);">
+          Clear All
+        </button>
+      </div>
+      <div id="historyList" class="space-y-2"></div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="px-6 py-6 text-center" style="border-top: 1px solid var(--border);">
+    <p class="text-xs" style="color: var(--muted);">
+      All processing happens locally in your browser. No text is sent to any server.
+    </p>
+  </footer>
+</div>
+
+<script>
+// ==============================
+// Sentiment Analysis Engine (Lexicon-based + Heuristics)
+// ==============================
+
+const LEXICON = {
+  // Strongly positive
+  'amazing': 0.95, 'incredible': 0.95, 'outstanding': 0.95, 'phenomenal': 0.95,
+  'exceptional': 0.93, 'brilliant': 0.92, 'superb': 0.92, 'magnificent': 0.92,
+  'excellent': 0.90, 'fantastic': 0.90, 'wonderful': 0.88, 'marvelous': 0.88,
+  'extraordinary': 0.90, 'spectacular': 0.90, 'glorious': 0.87, 'splendid': 0.87,
+  'perfect': 0.93, 'perfection': 0.93, 'flawless': 0.91, 'impeccable': 0.91,
+  'masterpiece': 0.94, 'gem': 0.85, 'treasure': 0.84, 'delight': 0.83,
+  'blown away': 0.92, 'mind-blowing': 0.93, 'jaw-dropping': 0.91,
+
+  // Moderately positive
+  'love': 0.85, 'loved': 0.85, 'loving': 0.80, 'loves': 0.85,
+  'great': 0.78, 'good': 0.65, 'nice': 0.60, 'fine': 0.45,
+  'happy': 0.75, 'glad': 0.72, 'pleased': 0.73, 'satisfied': 0.70,
+  'enjoy': 0.76, 'enjoyed': 0.76, 'enjoying': 0.74, 'enjoyable': 0.75,
+  'beautiful': 0.80, 'gorgeous': 0.82, 'lovely': 0.78, 'pretty': 0.55,
+  'awesome': 0.85, 'cool': 0.60, 'neat': 0.55, 'sweet': 0.62,
+  'recommend': 0.72, 'recommended': 0.72, 'recommending': 0.70,
+  'impressive': 0.78, 'solid': 0.65, 'reliable': 0.68, 'premium': 0.72,
+  'comfortable': 0.65, 'convenient': 0.63, 'helpful': 0.70, 'useful': 0.68,
+  'fast': 0.55, 'quick': 0.55, 'smooth': 0.62, 'easy': 0.58,
+  'worth': 0.65, 'value': 0.55, 'affordable': 0.60, 'quality': 0.55,
+  'best': 0.88, 'better': 0.65, 'improved': 0.60, 'improvement': 0.62,
+  'success': 0.75, 'successful': 0.75, 'win': 0.70, 'winning': 0.72,
+  'exciting': 0.78, 'excited': 0.80, 'thrilled': 0.83, 'thrilling': 0.80,
+  'grateful': 0.78, 'thankful': 0.76, 'appreciate': 0.73, 'appreciated': 0.73,
+  'fun': 0.70, 'funny': 0.65, 'entertaining': 0.68, 'engaging': 0.66,
+  'charming': 0.72, 'elegant': 0.74, 'stylish': 0.65, 'tasty': 0.70,
+  'delicious': 0.78, 'fresh': 0.60, 'clean': 0.55, 'bright': 0.55,
+  'paradise': 0.82, 'heaven': 0.80, 'bliss': 0.83, 'joy': 0.82,
+  'cheerful': 0.72, 'warm': 0.55, 'friendly': 0.68, 'welcoming': 0.70,
+  'generous': 0.70, 'kind': 0.68, 'gentle': 0.60, 'peaceful': 0.65,
+  'remarkable': 0.80, 'notable': 0.60, 'impressive': 0.78, 'stunning': 0.83,
+
+  // Mildly positive
+  'okay': 0.30, 'decent': 0.35, 'fair': 0.25, 'acceptable': 0.30,
+  'adequate': 0.28, 'reasonable': 0.32, 'satisfactory': 0.35,
+  'like': 0.50, 'liked': 0.50, 'likes': 0.50, 'liking': 0.48,
+
+  // Strongly negative
+  'terrible': -0.93, 'horrible': -0.93, 'awful': -0.92, 'dreadful': -0.92,
+  'atrocious': -0.95, 'abysmal': -0.95, 'appalling': -0.93, 'catastrophic': -0.94,
+  'disgusting': -0.91, 'revolting': -0.90, 'repulsive': -0.90, 'vile': -0.89,
+  'worst': -0.95, 'worst-ever': -0.97, 'nightmare': -0.88, 'trash': -0.85,
+  'garbage': -0.88, 'rubbish': -0.85, 'junk': -0.82, 'scam': -0.90,
+  'fraud': -0.92, 'hoax': -0.85, 'fake': -0.80, 'phony': -0.78,
+
+  // Moderately negative
+  'hate': -0.88, 'hated': -0.88, 'hating': -0.85, 'hates': -0.88,
+  'bad': -0.70, 'poor': -0.68, 'wrong': -0.55, 'broken': -0.72,
+  'disappointed': -0.72, 'disappointing': -0.70, 'disappointment': -0.72,
+  'frustrated': -0.70, 'frustrating': -0.68, 'frustration': -0.70,
+  'annoyed': -0.62, 'annoying': -0.60, 'irritated': -0.65, 'irritating': -0.63,
+  'angry': -0.75, 'furious': -0.88, 'enraged': -0.85, 'mad': -0.65,
+  'sad': -0.60, 'unhappy': -0.65, 'miserable': -0.78, 'depressed': -0.80,
+  'ugly': -0.72, 'messy': -0.50, 'dirty': -0.58, 'stained': -0.55,
+  'waste': -0.75, 'wasted': -0.75, 'wasting': -0.70,
+  'fail': -0.75, 'failed': -0.75, 'failure': -0.78, 'failing': -0.70,
+  'boring': -0.60, 'dull': -0.55, 'tedious': -0.58, 'tiresome': -0.55,
+  'slow': -0.45, 'sluggish': -0.58, 'laggy': -0.60, 'unresponsive': -0.65,
+  'expensive': -0.40, 'overpriced': -0.65, 'ripoff': -0.82, 'rip-off': -0.82,
+  'cheap': -0.50, 'flimsy': -0.60, 'fragile': -0.45, 'defective': -0.75,
+  'useless': -0.80, 'pointless': -0.72, 'worthless': -0.82, 'futile': -0.70,
+  'painful': -0.70, 'pain': -0.55, 'hurt': -0.55, 'damage': -0.60,
+  'ruined': -0.78, 'destroyed': -0.75, 'destroy': -0.75, 'ruin': -0.75,
+  'bug': -0.55, 'bugs': -0.55, 'buggy': -0.65, 'glitch': -0.60, 'glitches': -0.60,
+  'crash': -0.70, 'crashed': -0.72, 'crashing': -0.70,
+  'error': -0.50, 'errors': -0.50, 'issue': -0.35, 'issues': -0.38,
+  'problem': -0.45, 'problems': -0.48, 'complaint': -0.60,
+  'regret': -0.72, 'regretted': -0.72, 'regrets': -0.70,
+  'sucks': -0.78, 'suck': -0.78, 'sucked': -0.78,
+  'lame': -0.60, 'weak': -0.50, 'worse': -0.65,
+  'uncomfortable': -0.55, 'inconvenient': -0.52, 'difficult': -0.40,
+  'confusing': -0.52, 'complicated': -0.42, 'unreliable': -0.68,
+  'disrespectful': -0.65, 'rude': -0.70, 'unprofessional': -0.72,
+  'avoid': -0.62, 'never buy': -0.80, 'do not buy': -0.80, "don't buy": -0.80,
+  'refund': -0.55, 'return': -0.40, 'returned': -0.45,
+  'waited': -0.40, 'waiting': -0.38, 'delay': -0.50, 'delayed': -0.55,
+  'overrated': -0.68, 'underwhelming': -0.60, 'mediocre': -0.45,
+  'subpar': -0.55, 'inferior': -0.62, 'lacking': -0.45,
+  'unfortunate': -0.50, 'unfortunately': -0.48, 'sadly': -0.50,
+};
+
+// Negation words
+const NEGATIONS = new Set([
+  'not', "n't", 'no', 'never', 'neither', 'nobody', 'nothing',
+  'nowhere', 'nor', 'cannot', "can't", "won't", "don't", "doesn't",
+  "didn't", "isn't", "aren't", "wasn't", "weren't", "shouldn't",
+  "wouldn't", "couldn't", "haven't", "hasn't", "hadn't"
+]);
+
+// Intensifiers
+const INTENSIFIERS = {
+  'very': 1.3, 'really': 1.3, 'extremely': 1.5, 'incredibly': 1.4,
+  'absolutely': 1.5, 'totally': 1.35, 'completely': 1.4, 'utterly': 1.45,
+  'highly': 1.3, 'super': 1.3, 'so': 1.2, 'quite': 1.15, 'rather': 1.1,
+  'especially': 1.2, 'particularly': 1.2, 'remarkably': 1.3,
+  'seriously': 1.25, 'truly': 1.3, 'genuinely': 1.25,
+};
+
+// Diminishers
+const DIMINISHERS = {
+  'slightly': 0.6, 'somewhat': 0.65, 'barely': 0.5, 'hardly': 0.5,
+  'mildly': 0.6, 'a bit': 0.55, 'kind of': 0.6, 'sort of': 0.6,
+  'a little': 0.55, 'marginally': 0.5, 'partially': 0.65,
+};
+
+function tokenize(text) {
+  // Lowercase and split into tokens, preserving contractions
+  return text.toLowerCase().replace(/[^a-z0-9''-]/g, ' ').split(/\s+/).filter(t => t.length > 0);
+}
+
+function analyzeSentiment(text) {
+  if (!text || text.trim().length === 0) {
+    return { score: 0, positive: 0, negative: 0, neutral: 1, label: 'Neutral', keywords: [] };
+  }
+
+  const tokens = tokenize(text);
+  const keywords = [];
+  let rawScore = 0;
+  let scoredTokens = 0;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    // Check multi-word phrases (bigrams and trigrams)
+    let matched = false;
+
+    // Trigram check
+    if (i < tokens.length - 2) {
+      const trigram = tokens[i] + ' ' + tokens[i+1] + ' ' + tokens[i+2];
+      if (LEXICON[trigram] !== undefined) {
+        let val = LEXICON[trigram];
+        // Check negation before trigram
+        if (i > 0 && NEGATIONS.has(tokens[i-1])) val = -val * 0.75;
+        rawScore += val;
+        scoredTokens++;
+        keywords.push({ word: trigram, score: val });
+        i += 2;
+        matched = true;
+        continue;
+      }
+    }
+
+    if (matched) continue;
+
+    // Bigram check
+    if (i < tokens.length - 1) {
+      const bigram = tokens[i] + ' ' + tokens[i+1];
+      if (LEXICON[bigram] !== undefined) {
+        let val = LEXICON[bigram];
+        if (i > 0 && NEGATIONS.has(tokens[i-1])) val = -val * 0.75;
+        rawScore += val;
+        scoredTokens++;
+        keywords.push({ word: bigram, score: val });
+        i++;
+        matched = true;
+        continue;
+      }
+    }
+
+    if (matched) continue;
+
+    // Single word check
+    if (LEXICON[token] !== undefined) {
+      let val = LEXICON[token];
+
+      // Check for negation in previous 3 tokens
+      let negated = false;
+      for (let j = Math.max(0, i - 3); j < i; j++) {
+        if (NEGATIONS.has(tokens[j])) {
+          negated = true;
+          break;
+        }
+      }
+      if (negated) val = -val * 0.75;
+
+      // Check for intensifier in previous 2 tokens
+      for (let j = Math.max(0, i - 2); j < i; j++) {
+        if (INTENSIFIERS[tokens[j]] !== undefined) {
+          val *= INTENSIFIERS[tokens[j]];
+          break;
+        }
+      }
+
+      // Check for diminisher
+      for (let j = Math.max(0, i - 2); j < i; j++) {
+        if (DIMINISHERS[tokens[j]] !== undefined) {
+          val *= DIMINISHERS[tokens[j]];
+          break;
+        }
+      }
+
+      rawScore += val;
+      scoredTokens++;
+      keywords.push({ word: token, score: val });
+    }
+  }
+
+  // Exclamation marks boost positive or negative
+  const exclamations = (text.match(/!/g) || []).length;
+  if (exclamations > 0 && scoredTokens > 0) {
+    const boost = Math.min(exclamations * 0.05, 0.15);
+    if (rawScore > 0) rawScore += boost;
+    else if (rawScore < 0) rawScore -= boost;
+  }
+
+  // Question marks slightly push toward neutral
+  const questions = (text.match(/\?/g) || []).length;
+  if (questions > 0) {
+    rawScore *= Math.max(0.7, 1 - questions * 0.08);
+  }
+
+  // ALL CAPS words boost sentiment
+  const capsWords = text.match(/\b[A-Z]{3,}\b/g) || [];
+  if (capsWords.length > 0) {
+    const capsBoost = Math.min(capsWords.length * 0.03, 0.12);
+    if (rawScore > 0) rawScore += capsBoost;
+    else if (rawScore < 0) rawScore -= capsBoost;
+  }
+
+  // Normalize score to 0-1 range
+  let normalizedScore;
+  if (scoredTokens === 0) {
+    normalizedScore = 0.5; // Completely neutral
+  } else {
+    // Map from [-1, 1] to [0, 1]
+    const avgScore = rawScore / Math.max(scoredTokens, 1);
+    normalizedScore = (avgScore + 1) / 2;
+    normalizedScore = Math.max(0, Math.min(1, normalizedScore));
+  }
+
+  // If very few sentiment words, lean more neutral
+  const sentimentDensity = scoredTokens / Math.max(tokens.length, 1);
+  if (sentimentDensity < 0.05 && tokens.length > 3) {
+    normalizedScore = normalizedScore * 0.5 + 0.5 * 0.5; // Pull toward 0.5
+  } else if (sentimentDensity < 0.1 && tokens.length > 5) {
+    normalizedScore = normalizedScore * 0.7 + 0.3 * 0.5;
+  }
+
+  // Determine label and component scores
+  let label, positive, negative, neutral;
+
+  if (normalizedScore >= 0.62) {
+    label = 'Positive';
+    positive = normalizedScore;
+    negative = 1 - normalizedScore;
+    neutral = 0;
+  } else if (normalizedScore <= 0.38) {
+    label = 'Negative';
+    negative = 1 - normalizedScore;
+    positive = normalizedScore;
+    neutral = 0;
+  } else {
+    label = 'Neutral';
+    neutral = 1 - Math.abs(normalizedScore - 0.5) * 2;
+    if (normalizedScore > 0.5) {
+      positive = normalizedScore - 0.5;
+      negative = 0;
+    } else {
+      negative = 0.5 - normalizedScore;
+      positive = 0;
+    }
+    // Normalize to sum to 1
+    const sum = positive + negative + neutral;
+    positive /= sum;
+    negative /= sum;
+    neutral /= sum;
+  }
+
+  return {
+    score: Math.round(normalizedScore * 100) / 100,
+    positive: Math.round(positive * 100),
+    negative: Math.round(negative * 100),
+    neutral: Math.round(neutral * 100),
+    label,
+    keywords: keywords.slice(0, 12) // Cap keywords shown
+  };
+}
+
+// Sentence-level analysis
+function analyzeSentences(text) {
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+  return sentences.map(s => {
+    const result = analyzeSentiment(s);
+    return { text: s.trim(), ...result };
+  });
+}
+
+// Text statistics
+function getTextStats(text) {
+  const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+  const exclamations = (text.match(/!/g) || []).length;
+  const avgWordLen = words.length > 0
+    ? (words.reduce((sum, w) => sum + w.replace(/[^a-zA-Z]/g, '').length, 0) / words.length).toFixed(1)
+    : '0';
+  return {
+    words: words.length,
+    sentences: sentences.length,
+    avgWordLen,
+    exclamations
+  };
+}
+
+
+// ==============================
+// UI Controller
+// ==============================
+
+const textInput = document.getElementById('textInput');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const clearBtn = document.getElementById('clearBtn');
+const charCount = document.getElementById('charCount');
+const resultsSection = document.getElementById('resultsSection');
+const historySection = document.getElementById('historySection');
+const historyList = document.getElementById('historyList');
+const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+const spinner = document.getElementById('spinner');
+const btnIcon = document.getElementById('btnIcon');
+const btnText = document.getElementById('btnText');
+const analysisCountEl = document.getElementById('analysisCount');
+
+let analysisHistory = [];
+let totalAnalyses = 0;
+
+// Character counter
+textInput.addEventListener('input', () => {
+  const len = textInput.value.length;
+  charCount.textContent = `${len} / 2000`;
+  charCount.style.color = len > 1800 ? 'var(--negative)' : 'var(--muted)';
+});
+
+// Sample chips
+document.querySelectorAll('.sample-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    textInput.value = chip.dataset.text;
+    textInput.dispatchEvent(new Event('input'));
+    textInput.focus();
+  });
+});
+
+// Clear button
+clearBtn.addEventListener('click', () => {
+  textInput.value = '';
+  textInput.dispatchEvent(new Event('input'));
+  resultsSection.style.display = 'none';
+  textInput.focus();
+});
+
+// Analyze button
+analyzeBtn.addEventListener('click', () => {
+  const text = textInput.value.trim();
+  if (!text) {
+    showToast('Please enter some text to analyze.', 'warning');
+    return;
+  }
+  if (text.length < 3) {
+    showToast('Text is too short for meaningful analysis.', 'warning');
+    return;
+  }
+  runAnalysis(text);
+});
+
+// Also allow Ctrl+Enter
+textInput.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    analyzeBtn.click();
+  }
+});
+
+function runAnalysis(text) {
+  // Show loading state
+  spinner.style.display = 'block';
+  btnIcon.style.display = 'none';
+  btnText.textContent = 'Analyzing...';
+  analyzeBtn.disabled = true;
+
+  // Simulate brief processing delay for feel
+  setTimeout(() => {
+    const result = analyzeSentiment(text);
+    const stats = getTextStats(text);
+    const sentences = analyzeSentences(text);
+
+    // Update total count
+    totalAnalyses++;
+    analysisCountEl.textContent = `${totalAnalyses} analyzed`;
+
+    // Render results
+    renderResults(result, stats, sentences);
+    addToHistory(text, result);
+
+    // Reset button
+    spinner.style.display = 'none';
+    btnIcon.style.display = 'inline';
+    btnText.textContent = 'Analyze Sentiment';
+    analyzeBtn.disabled = false;
+  }, 400);
+}
+
+function renderResults(result, stats, sentences) {
+  resultsSection.style.display = 'block';
+
+  // Re-trigger animations
+  resultsSection.querySelectorAll('.animate-in').forEach(el => {
+    el.style.animation = 'none';
+    el.offsetHeight; // Force reflow
+    el.style.animation = '';
+  });
+
+  // Badge
+  const badge = document.getElementById('sentimentBadge');
+  const label = document.getElementById('sentimentLabel');
+  badge.className = 'sentiment-badge';
+  if (result.label === 'Positive') {
+    badge.classList.add('badge-positive');
+    badge.querySelector('i').className = 'fa-solid fa-face-smile';
+  } else if (result.label === 'Negative') {
+    badge.classList.add('badge-negative');
+    badge.querySelector('i').className = 'fa-solid fa-face-frown';
+  } else {
+    badge.classList.add('badge-neutral');
+    badge.querySelector('i').className = 'fa-solid fa-face-meh';
+  }
+  label.textContent = result.label;
+
+  // Score display
+  const scoreDisplay = document.getElementById('scoreDisplay');
+  animateNumber(scoreDisplay, result.score, result.label);
+
+  // Bars
+  setTimeout(() => {
+    document.getElementById('posBar').style.width = result.positive + '%';
+    document.getElementById('negBar').style.width = result.negative + '%';
+    document.getElementById('neuBar').style.width = result.neutral + '%';
+  }, 100);
+  document.getElementById('posPercent').textContent = result.positive + '%';
+  document.getElementById('negPercent').textContent = result.negative + '%';
+  document.getElementById('neuPercent').textContent = result.neutral + '%';
+
+  // Keywords
+  const kwContainer = document.getElementById('keywordsContainer');
+  if (result.keywords.length === 0) {
+    kwContainer.innerHTML = '<span class="text-xs" style="color: var(--muted);">No sentiment keywords detected</span>';
+  } else {
+    kwContainer.innerHTML = result.keywords.map(kw => {
+      const cls = kw.score > 0 ? 'kw-positive' : 'kw-negative';
+      const icon = kw.score > 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+      return `<span class="keyword-tag ${cls}"><i class="fa-solid ${icon}" style="font-size:0.65rem;"></i> ${kw.word}</span>`;
+    }).join('');
+  }
+
+  // Text stats
+  document.getElementById('wordCount').textContent = stats.words;
+  document.getElementById('sentenceCount').textContent = stats.sentences;
+  document.getElementById('avgWordLen').textContent = stats.avgWordLen;
+  document.getElementById('exclamCount').textContent = stats.exclamations;
+
+  // Sentence breakdown
+  const breakdownEl = document.getElementById('sentenceBreakdown');
+  if (sentences.length <= 1) {
+    breakdownEl.innerHTML = '<p class="text-xs" style="color: var(--muted);">Single sentence — see overall result above.</p>';
+  } else {
+    breakdownEl.innerHTML = sentences.map((s, i) => {
+      const color = s.label === 'Positive' ? 'var(--positive)' : s.label === 'Negative' ? 'var(--negative)' : 'var(--neutral)';
+      const icon = s.label === 'Positive' ? 'fa-face-smile' : s.label === 'Negative' ? 'fa-face-frown' : 'fa-face-meh';
+      const truncated = s.text.length > 100 ? s.text.substring(0, 100) + '...' : s.text;
+      return `
+        <div class="flex items-start gap-3 p-3 rounded-lg" style="background: var(--bg-elevated);">
+          <i class="fa-solid ${icon} mt-0.5" style="color: ${color}; font-size: 0.85rem; flex-shrink: 0;"></i>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm leading-relaxed" style="color: var(--fg);">${escapeHtml(truncated)}</p>
+          </div>
+          <div class="flex-shrink-0 text-right">
+            <span class="text-xs font-semibold" style="color: ${color}; font-family: 'Space Grotesk', sans-serif;">${s.score.toFixed(2)}</span>
+            <div class="text-[10px] mt-0.5" style="color: var(--muted);">${s.label}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Draw gauge
+  drawGauge(result.score, result.label);
+
+  // Scroll to results
+  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function animateNumber(el, target, label) {
+  const color = label === 'Positive' ? 'var(--positive)' : label === 'Negative' ? 'var(--negative)' : 'var(--neutral)';
+  el.style.color = color;
+  let current = 0;
+  const duration = 600;
+  const start = performance.now();
+  function step(timestamp) {
+    const progress = Math.min((timestamp - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+    current = eased * target;
+    el.textContent = current.toFixed(2);
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function drawGauge(score, label) {
+  const canvas = document.getElementById('gaugeCanvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const size = 200;
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+  ctx.scale(dpr, dpr);
+
+  const cx = size / 2;
+  const cy = size / 2 + 10;
+  const radius = 75;
+  const lineWidth = 12;
+  const startAngle = Math.PI * 0.8;
+  const endAngle = Math.PI * 2.2;
+  const totalArc = endAngle - startAngle;
+
+  ctx.clearRect(0, 0, size, size);
+
+  // Background track
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, endAngle);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Color gradient along the arc
+  const scoreAngle = startAngle + totalArc * score;
+  const gradient = ctx.createLinearGradient(cx - radius, cy, cx + radius, cy);
+  gradient.addColorStop(0, '#ef4444');
+  gradient.addColorStop(0.35, '#f59e0b');
+  gradient.addColorStop(0.5, '#64748b');
+  gradient.addColorStop(0.65, '#22c55e');
+  gradient.addColorStop(1, '#16a34a');
+
+  // Filled arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, scoreAngle);
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Glow effect
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, scoreAngle);
+  ctx.strokeStyle = label === 'Positive' ? 'rgba(34,197,94,0.3)' : label === 'Negative' ? 'rgba(239,68,68,0.3)' : 'rgba(100,116,139,0.3)';
+  ctx.lineWidth = lineWidth + 8;
+  ctx.lineCap = 'round';
+  ctx.filter = 'blur(8px)';
+  ctx.stroke();
+  ctx.filter = 'none';
+
+  // Needle dot
+  const dotX = cx + radius * Math.cos(scoreAngle);
+  const dotY = cy + radius * Math.sin(scoreAngle);
+  const dotColor = label === 'Positive' ? '#22c55e' : label === 'Negative' ? '#ef4444' : '#64748b';
+
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 7, 0, Math.PI * 2);
+  ctx.fillStyle = dotColor;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  // Center icon
+  ctx.font = '28px "Font Awesome 6 Free"';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = dotColor;
+
+  const iconMap = { Positive: '\uf118', Negative: '\uf119', Neutral: '\uf11a' };
+  // Fallback: just draw the score text
+  ctx.font = 'bold 28px "Space Grotesk", sans-serif';
+  ctx.fillText(score.toFixed(2), cx, cy - 8);
+
+  ctx.font = '11px "DM Sans", sans-serif';
+  ctx.fillStyle = '#7a7890';
+  ctx.fillText(label.toUpperCase(), cx, cy + 14);
+}
+
+function addToHistory(text, result) {
+  analysisHistory.unshift({ text, result, time: new Date() });
+  if (analysisHistory.length > 10) analysisHistory.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  if (analysisHistory.length === 0) {
+    historySection.style.display = 'none';
+    return;
+  }
+  historySection.style.display = 'block';
+
+  historyList.innerHTML = analysisHistory.map((item, i) => {
+    const truncated = item.text.length > 70 ? item.text.substring(0, 70) + '...' : item.text;
+    const color = item.result.label === 'Positive' ? 'var(--positive)' : item.result.label === 'Negative' ? 'var(--negative)' : 'var(--neutral)';
+    const icon = item.result.label === 'Positive' ? 'fa-face-smile' : item.result.label === 'Negative' ? 'fa-face-frown' : 'fa-face-meh';
+    const timeStr = item.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `
+      <div class="history-item flex items-center gap-3" data-index="${i}" role="button" tabindex="0" aria-label="Re-analyze: ${escapeHtml(truncated)}">
+        <i class="fa-solid ${icon}" style="color: ${color}; flex-shrink: 0;"></i>
+        <p class="flex-1 text-sm truncate" style="color: var(--fg);">${escapeHtml(truncated)}</p>
+        <span class="text-xs flex-shrink-0" style="color: var(--muted);">${item.result.score.toFixed(2)}</span>
+        <span class="text-xs flex-shrink-0" style="color: var(--border);">${timeStr}</span>
+      </div>
+    `;
+  }).join('');
+
+  // Click to re-analyze
+  historyList.querySelectorAll('.history-item').forEach(el => {
+    const handler = () => {
+      const idx = parseInt(el.dataset.index);
+      textInput.value = analysisHistory[idx].text;
+      textInput.dispatchEvent(new Event('input'));
+      runAnalysis(analysisHistory[idx].text);
+    };
+    el.addEventListener('click', handler);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') handler(); });
+  });
+}
+
+clearHistoryBtn.addEventListener('click', () => {
+  analysisHistory = [];
+  renderHistory();
+  showToast('History cleared.', 'info');
+});
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function showToast(message, type = 'info') {
+  const toast = document.getElementById('toast');
+  const iconMap = {
+    info: '<i class="fa-solid fa-circle-info mr-2" style="color: var(--accent);"></i>',
+    warning: '<i class="fa-solid fa-triangle-exclamation mr-2" style="color: #f59e0b;"></i>',
+    success: '<i class="fa-solid fa-circle-check mr-2" style="color: var(--positive);"></i>'
+  };
+  toast.innerHTML = (iconMap[type] || '') + escapeHtml(message);
+  toast.classList.add('show');
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// Draw initial empty gauge on load
+function drawEmptyGauge() {
+  const canvas = document.getElementById('gaugeCanvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const size = 200;
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+  ctx.scale(dpr, dpr);
+
+  const cx = size / 2;
+  const cy = size / 2 + 10;
+  const radius = 75;
+  const startAngle = Math.PI * 0.8;
+  const endAngle = Math.PI * 2.2;
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, endAngle);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 12;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  ctx.font = '11px "DM Sans", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#7a7890';
+  ctx.fillText('AWAITING INPUT', cx, cy);
+}
+
+// Particle background on canvas behind the hero
+(function initParticles() {
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0.4;';
+  document.body.prepend(canvas);
+  const ctx = canvas.getContext('2d');
+  let w, h, particles = [];
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Check reduced motion preference
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReducedMotion) return;
+
+  for (let i = 0; i < 40; i++) {
+    particles.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      r: Math.random() * 1.5 + 0.5,
+      alpha: Math.random() * 0.4 + 0.1,
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = w;
+      if (p.x > w) p.x = 0;
+      if (p.y < 0) p.y = h;
+      if (p.y > h) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(240,165,0,${p.alpha})`;
+      ctx.fill();
+    });
+
+    // Draw connections
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(240,165,0,${0.06 * (1 - dist / 120)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// Focus textarea on load
+textInput.focus();
+</script>
+</body>
+</html>
